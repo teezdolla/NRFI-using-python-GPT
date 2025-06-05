@@ -17,6 +17,9 @@ pip install -r requirements.txt
 ```
 
 ## Usage
+You can run individual scripts or use the unified pipeline:
+
+### Stand-alone scripts
 1. Fetch or update Statcast data:
    ```bash
    python data_prep.py
@@ -29,3 +32,11 @@ pip install -r requirements.txt
    ```bash
    python predict_today.py
    ```
+
+### Unified pipeline
+`nrfi_full_pipeline.py` exposes sub-commands to perform all steps:
+```bash
+python nrfi_full_pipeline.py fetch_data
+python nrfi_full_pipeline.py train
+python nrfi_full_pipeline.py predict_today
+```
