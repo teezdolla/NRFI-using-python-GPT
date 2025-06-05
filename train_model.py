@@ -14,6 +14,10 @@ def load_enhanced_dataset() -> pd.DataFrame:
     """Load base data and merge rolling statistics."""
     df = pd.read_csv(DATA_FILE, parse_dates=["game_date"]).sort_values(["pitcher", "game_date"])
 
+    # days of rest since previous start for each pitcher
+    df["days_rest"] = df.groupby("pitcher")["game_date"].diff().dt.days
+    df["days_rest"].fillna(df["days_rest"].median(), inplace=True)
+
     stats_cols = ["hits_allowed", "walks", "strikeouts", "batters_faced", "runs_allowed"]
     for c in stats_cols:
         df[f"{c}_roll3"] = (
@@ -32,6 +36,7 @@ def load_enhanced_dataset() -> pd.DataFrame:
         "inning",
         "pitcher",
         "season",
+        "days_rest",
         "hits_allowed",
         "walks",
         "strikeouts",

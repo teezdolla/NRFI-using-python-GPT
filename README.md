@@ -8,8 +8,9 @@ This repository trains a model to predict whether a run will be scored in the fi
 
 ## Model training
 `train_model.py` builds an enhanced training set from `final_training_data.csv` by
-merging rolling pitcher and team offense statistics. It then performs hyperparameter
-tuning using `GridSearchCV` with **time-series cross-validation**. The best model is
+merging rolling pitcher and team offense statistics. It now adds the number of days
+since each pitcher's previous start as a feature. Hyperparameter tuning is performed
+using `GridSearchCV` with **time-series cross-validation**. The best model is
 evaluated on an 80/20 chronological split and saved as `xgboost_yrfi_tuned.json`.
 
 ## Requirements
@@ -35,8 +36,9 @@ You can run individual scripts or use the unified pipeline:
    python predict_today.py --output results.csv --txt-output results.txt
    ```
    The script automatically resolves pitcher IDs using MLB-StatsAPI and merges
-   the latest rolling stats for both pitchers and team first-inning offense. Use
-   `--output` to save a CSV and `--txt-output` to write a plain-text table.
+   the latest rolling stats for both pitchers and team first-inning offense. Results
+   are aggregated for the **full first inning** (top and bottom halves combined).
+   Use `--output` to save a CSV and `--txt-output` to write a plain-text table.
 
 ### Unified pipeline
 `nrfi_full_pipeline.py` exposes sub-commands to perform all steps:

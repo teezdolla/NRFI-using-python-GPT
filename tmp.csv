@@ -1,0 +1,14 @@
+away_team,home_team,away_pitcher,home_pitcher,P_YRFI,P_NRFI,Confidence
+Arizona Diamondbacks,Atlanta Braves,Brandon Pfaadt,Grant Holmes,0.65534234,0.34465766,⚠️ Moderate YRFI
+Chicago Cubs,Washington Nationals,Drew Pomeranz,Jake Irvin,0.5891936,0.41080642,❓ Low Confidence
+Detroit Tigers,Chicago White Sox,Casey Mize,Sean Burke,0.585666,0.414334,❓ Low Confidence
+Houston Astros,Pittsburgh Pirates,Framber Valdez,Mitch Keller,0.5765315,0.42346847,❓ Low Confidence
+Minnesota Twins,Athletics,David Festa,Mitch Spence,0.56228185,0.43771815,❓ Low Confidence
+Baltimore Orioles,Seattle Mariners,Zach Eflin,Bryan Woo,0.53955257,0.46044743,❓ Low Confidence
+Texas Rangers,Tampa Bay Rays,Jack Leiter,Ryan Pepiot,0.53766036,0.46233964,❓ Low Confidence
+San Diego Padres,San Francisco Giants,Dylan Cease,Robbie Ray,0.5148642,0.4851358,❓ Low Confidence
+Kansas City Royals,St. Louis Cardinals,Noah Cameron,Miles Mikolas,0.5109711,0.48902887,❓ Low Confidence
+Kansas City Royals,St. Louis Cardinals,Cole Ragans,Matthew Liberatore,0.50619936,0.49380064,❓ Low Confidence
+Philadelphia Phillies,Toronto Blue Jays,Jesús Luzardo,Chris Bassitt,0.48983604,0.51016396,❓ Low Confidence
+Cleveland Guardians,New York Yankees,Slade Cecconi,Max Fried,0.48327512,0.5167249,❓ Low Confidence
+New York Mets,Los Angeles Dodgers,David Peterson,Landon Knack,0.47506827,0.5249317,❓ Low Confidence

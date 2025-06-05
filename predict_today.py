@@ -55,7 +55,9 @@ pitcher_roll = pitcher_roll.sort_values(['pitcher','game_date_start'])
 stats_cols = ['hits_allowed','walks','strikeouts','batters_faced','runs_allowed']
 for c in stats_cols:
     pitcher_roll[f'{c}_roll3'] = pitcher_roll.groupby('pitcher')[c].transform(lambda s: s.rolling(3, min_periods=1).mean().shift())
-pitcher_roll_latest = pitcher_roll.groupby('pitcher').tail(1)[['pitcher'] + [f'{c}_roll3' for c in stats_cols]]
+pitcher_roll_latest = pitcher_roll.groupby('pitcher').tail(1)[['pitcher','game_date_start'] + [f'{c}_roll3' for c in stats_cols]]
+pitcher_roll_latest['days_rest'] = (pd.Timestamp.today().normalize() - pitcher_roll_latest['game_date_start']).dt.days
+pitcher_roll_latest = pitcher_roll_latest.drop(columns=['game_date_start'])
 
 # Map team full names to abbreviations as in CSV
 team_map = {
@@ -160,7 +162,7 @@ def predict(df):
         else:
             return "❓ Low Confidence"
     df['Confidence'] = df['P_YRFI'].apply(label_conf)
-    return df[['team','pitcher_name','P_YRFI','P_NRFI','Confidence']]
+    return df[['game_pk','team','pitcher_name','inning_topbot','P_YRFI','P_NRFI','Confidence']]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Predict YRFI/NRFI for today's games")
@@ -174,10 +176,41 @@ if __name__ == '__main__':
     else:
         feats = prepare_features(games)
         results = predict(feats)
-        results = results.sort_values('P_YRFI', ascending=False)
-        print(results)
+
+        # aggregate to full first inning probability
+        pivot = results.pivot(index='game_pk', columns='inning_topbot', values='P_YRFI')
+        pivot = pivot.rename(columns={'Top': 'P_YRFI_top', 'Bot': 'P_YRFI_bot'})
+        pivot['P_YRFI'] = 1 - (1 - pivot.get('P_YRFI_top', 0)) * (1 - pivot.get('P_YRFI_bot', 0))
+        pivot['P_NRFI'] = 1 - pivot['P_YRFI']
+
+        info = {
+            'away_team': games.loc[games['inning_topbot']=='Top'].set_index('game_pk')['team'],
+            'home_team': games.loc[games['inning_topbot']=='Bot'].set_index('game_pk')['team'],
+            'home_pitcher': games.loc[games['inning_topbot']=='Top'].set_index('game_pk')['pitcher_name'],
+            'away_pitcher': games.loc[games['inning_topbot']=='Bot'].set_index('game_pk')['pitcher_name']
+        }
+        info_df = pd.concat(info, axis=1)
+        full_results = pivot.merge(info_df, left_index=True, right_index=True)
+
+        def label_conf(p):
+            if p >= 0.75:
+                return "🔥 High YRFI"
+            elif p >= 0.65:
+                return "⚠️ Moderate YRFI"
+            elif p <= 0.35:
+                return "🧊 Moderate NRFI"
+            elif p <= 0.25:
+                return "❄️ High NRFI"
+            else:
+                return "❓ Low Confidence"
+
+        full_results['Confidence'] = full_results['P_YRFI'].apply(label_conf)
+        full_results = full_results.reset_index()[['away_team','home_team','away_pitcher','home_pitcher','P_YRFI','P_NRFI','Confidence']]
+        full_results = full_results.sort_values('P_YRFI', ascending=False)
+
+        print(full_results)
         if args.output:
-            results.to_csv(args.output, index=False)
+            full_results.to_csv(args.output, index=False)
         if args.txt_output:
             with open(args.txt_output, 'w') as f:
-                f.write(results.to_string(index=False))
+                f.write(full_results.to_string(index=False))
