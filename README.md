@@ -32,15 +32,16 @@ You can run individual scripts or use the unified pipeline:
    ```
 3. Generate predictions for today's games:
    ```bash
-   python predict_today.py
+   python predict_today.py --output results.csv --txt-output results.txt
    ```
    The script automatically resolves pitcher IDs using MLB-StatsAPI and merges
-   the latest rolling stats for both pitchers and team first-inning offense.
+   the latest rolling stats for both pitchers and team first-inning offense. Use
+   `--output` to save a CSV and `--txt-output` to write a plain-text table.
 
 ### Unified pipeline
 `nrfi_full_pipeline.py` exposes sub-commands to perform all steps:
 ```bash
 python nrfi_full_pipeline.py fetch_data
 python nrfi_full_pipeline.py train
-python nrfi_full_pipeline.py predict_today
+python nrfi_full_pipeline.py predict_today --output results.csv --txt-output results.txt
 ```

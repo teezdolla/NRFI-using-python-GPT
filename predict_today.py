@@ -4,6 +4,7 @@ from pybaseball import playerid_lookup
 import xgboost as xgb
 from datetime import datetime
 from functools import lru_cache
+import argparse
 
 # Load tuned booster
 model = xgb.Booster()
@@ -162,10 +163,21 @@ def predict(df):
     return df[['team','pitcher_name','P_YRFI','P_NRFI','Confidence']]
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Predict YRFI/NRFI for today's games")
+    parser.add_argument('--output', help='CSV file to save results')
+    parser.add_argument('--txt-output', help='Text file to save results')
+    args = parser.parse_args()
+
     games = get_today_games()
     if games.empty:
         print('No games found for today')
     else:
         feats = prepare_features(games)
         results = predict(feats)
-        print(results.sort_values('P_YRFI', ascending=False))
+        results = results.sort_values('P_YRFI', ascending=False)
+        print(results)
+        if args.output:
+            results.to_csv(args.output, index=False)
+        if args.txt_output:
+            with open(args.txt_output, 'w') as f:
+                f.write(results.to_string(index=False))

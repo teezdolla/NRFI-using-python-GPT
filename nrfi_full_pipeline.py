@@ -305,7 +305,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def predict_today() -> pd.DataFrame:
+def predict_today(output_csv: str | None = None, output_txt: str | None = None) -> pd.DataFrame:
     model = xgb.Booster()
     model.load_model(MODEL_FILE)
     expected_features = model.feature_names
@@ -332,7 +332,13 @@ def predict_today() -> pd.DataFrame:
         return "❓ Low Confidence"
 
     feats["Confidence"] = feats["P_YRFI"].apply(label_conf)
-    return feats[["team", "pitcher_name", "P_YRFI", "P_NRFI", "Confidence"]]
+    results = feats[["team", "pitcher_name", "P_YRFI", "P_NRFI", "Confidence"]].sort_values("P_YRFI", ascending=False)
+    if output_csv:
+        results.to_csv(output_csv, index=False)
+    if output_txt:
+        with open(output_txt, "w") as f:
+            f.write(results.to_string(index=False))
+    return results
 
 
 def main():
@@ -340,7 +346,9 @@ def main():
     sub = parser.add_subparsers(dest="cmd")
     sub.add_parser("fetch_data", help="Download and cache Statcast data")
     sub.add_parser("train", help="Train the XGBoost model")
-    sub.add_parser("predict_today", help="Predict YRFI/NRFI for today's games")
+    pred = sub.add_parser("predict_today", help="Predict YRFI/NRFI for today's games")
+    pred.add_argument('--output', help='CSV file to save results')
+    pred.add_argument('--txt-output', help='Text file to save results')
     args = parser.parse_args()
 
     if args.cmd == "fetch_data":
@@ -349,9 +357,9 @@ def main():
     elif args.cmd == "train":
         train_model()
     elif args.cmd == "predict_today":
-        results = predict_today()
+        results = predict_today(args.output, args.txt_output)
         if not results.empty:
-            print(results.sort_values("P_YRFI", ascending=False))
+            print(results)
     else:
         parser.print_help()
 
