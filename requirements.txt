@@ -2,5 +2,5 @@ pandas
 scikit-learn
 xgboost
 pybaseball
-statsapi
+MLB-StatsAPI
 joblib

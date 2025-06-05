@@ -1,15 +1,68 @@
 import os
-import joblib
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, log_loss
 from xgboost import XGBClassifier
 
-DATA_FILE = "final_training_data_clean_final.csv"
+DATA_FILE = "final_training_data.csv"
+PITCHER_ROLLING_FILE = "pitcher_rolling_stats.csv"
+TEAM_OFFENSE_FILE = "team_1st_inning_offense.csv"
 MODEL_FILE = "xgboost_yrfi_tuned.json"
 
+
+def load_enhanced_dataset() -> pd.DataFrame:
+    """Load base data and merge rolling statistics."""
+    df = pd.read_csv(DATA_FILE, parse_dates=["game_date"]).sort_values(["pitcher", "game_date"])
+
+    stats_cols = ["hits_allowed", "walks", "strikeouts", "batters_faced", "runs_allowed"]
+    for c in stats_cols:
+        df[f"{c}_roll3"] = (
+            df.groupby("pitcher")[c].transform(lambda s: s.shift().rolling(3, min_periods=1).mean())
+        )
+
+    off_cols = ["runs_1st", "OBP_team", "SLG_team", "K_rate_team", "BB_rate_team"]
+    for c in off_cols:
+        df[f"{c}_roll5"] = (
+            df.groupby(["team", "half_inning"])[c].transform(lambda s: s.shift().rolling(5, min_periods=1).mean())
+        )
+
+    df = df.fillna(0)
+
+    feature_cols = [
+        "inning",
+        "pitcher",
+        "season",
+        "hits_allowed",
+        "walks",
+        "strikeouts",
+        "batters_faced",
+        "runs_allowed",
+    ] + [f"{c}_roll3" for c in stats_cols] + [
+        "ERA_season",
+        "WHIP_season",
+        "FIP_season",
+        "K/9_season",
+        "BB/9_season",
+        "xFIP_season",
+        "CSW%_season",
+        "xERA_season",
+        "runs_rolling10_team",
+        "OBP_team",
+        "SLG_team",
+        "K_rate_team",
+        "BB_rate_team",
+        "runs_1st_roll5",
+        "OBP_team_roll5",
+        "SLG_team_roll5",
+        "K_rate_team_roll5",
+        "BB_rate_team_roll5",
+    ] + ["is_home_team", "label"]
+
+    df = df[feature_cols]
+    return df
+
 def main():
-    df = pd.read_csv(DATA_FILE)
+    df = load_enhanced_dataset()
     df = df.sort_values('season')
     X = df.drop(columns=['label'])
     y = df['label']

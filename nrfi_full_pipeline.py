@@ -9,31 +9,36 @@ import xgboost as xgb
 from xgboost import XGBClassifier
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, log_loss
-from pybaseball import statcast
+from pybaseball import statcast, playerid_lookup
 import statsapi
+from functools import lru_cache
 
 DATA_DIR = "data_cache"
-DATA_FILE = "final_training_data_clean_final.csv"
+DATA_FILE = "final_training_data.csv"
 MODEL_FILE = "xgboost_yrfi_tuned.json"
 PITCHER_SEASON_FILE = "pitcher_stats_season.csv"
 TEAM_OFFENSE_FILE = "team_1st_inning_offense.csv"
+PITCHER_ROLLING_FILE = "pitcher_rolling_stats.csv"
 
-# Manual pitcher ID mapping
-manual_ids = {
-    'brandon pfaadt': 680694,
-    'grant holmes': 656550,
-    'miles mikolas': 572070,
-    'matthew liberatore': 669461,
-    'chris bassitt': 605135,
-    'framber valdez': 664285,
-    'zach eflin': 621107,
-    'dylan cease': 656546,
-    'mitch keller': 641745,
-    'jake irvin': 676600,
-    'max fried': 621112,
-    'jack leiter': 680678,
-    'ryan pepiot': 675632
-}
+
+@lru_cache(maxsize=None)
+def lookup_pitcher_id(name: str) -> int | None:
+    try:
+        res = statsapi.lookup_player(name)
+        if res:
+            return int(res[0]["id"])
+    except Exception:
+        pass
+    try:
+        last = name.split()[-1]
+        first = name.split()[0]
+        tbl = playerid_lookup(last, first)
+        if not tbl.empty:
+            return int(tbl["key_mlbam"].iloc[0])
+    except Exception:
+        pass
+    return None
+
 
 # Team name to abbreviation mapping
 team_map = {
@@ -92,9 +97,83 @@ def load_statcast_range(start_year: int, end_year: int) -> pd.DataFrame:
     return df
 
 
+def load_enhanced_dataset() -> pd.DataFrame:
+    df = pd.read_csv(DATA_FILE, parse_dates=["game_date"]).sort_values("game_date")
+
+    p_roll = pd.read_csv(PITCHER_ROLLING_FILE, parse_dates=["game_date_start"]).sort_values([
+        "pitcher",
+        "game_date_start",
+    ])
+    stats_cols = ["hits_allowed", "walks", "strikeouts", "batters_faced", "runs_allowed"]
+    for c in stats_cols:
+        p_roll[f"{c}_roll3"] = p_roll.groupby("pitcher")[c].transform(lambda s: s.rolling(3, min_periods=1).mean().shift())
+    p_feats = p_roll[["pitcher", "game_date_start"] + [f"{c}_roll3" for c in stats_cols]]
+    df = df.sort_values(["pitcher", "game_date"], kind="mergesort").reset_index(drop=True)
+    p_feats = p_feats.sort_values(["pitcher", "game_date_start"], kind="mergesort").reset_index(drop=True)
+    df = pd.merge_asof(
+        df,
+        p_feats,
+        left_on="game_date",
+        right_on="game_date_start",
+        by="pitcher",
+        direction="backward",
+    )
+
+    t_off = pd.read_csv(TEAM_OFFENSE_FILE, parse_dates=["game_date"]).sort_values([
+        "team",
+        "half_inning",
+        "game_date",
+    ])
+    off_cols = ["runs_1st", "OBP", "SLG", "K_rate", "BB_rate"]
+    for c in off_cols:
+        t_off[f"{c}_roll5"] = t_off.groupby(["team", "half_inning"])[c].transform(lambda s: s.rolling(5, min_periods=1).mean().shift())
+    t_feats = t_off[["team", "half_inning", "game_date"] + [f"{c}_roll5" for c in off_cols]]
+    df = df.sort_values(["team", "half_inning", "game_date"], kind="mergesort").reset_index(drop=True)
+    t_feats = t_feats.sort_values(["team", "half_inning", "game_date"], kind="mergesort").reset_index(drop=True)
+    df = pd.merge_asof(
+        df,
+        t_feats,
+        left_on="game_date",
+        right_on="game_date",
+        by=["team", "half_inning"],
+        direction="backward",
+    )
+
+    df = df.fillna(0)
+    rename_map = {f"{c}_roll5": f"{c}_team_roll5" for c in off_cols}
+    df = df.rename(columns=rename_map)
+
+    feature_cols = [
+        "inning",
+        "pitcher",
+        "season",
+        "hits_allowed",
+        "walks",
+        "strikeouts",
+        "batters_faced",
+        "runs_allowed",
+    ] + [f"{c}_roll3" for c in stats_cols] + [
+        "ERA_season",
+        "WHIP_season",
+        "FIP_season",
+        "K/9_season",
+        "BB/9_season",
+        "xFIP_season",
+        "CSW%_season",
+        "xERA_season",
+        "runs_rolling10_team",
+        "OBP_team",
+        "SLG_team",
+        "K_rate_team",
+        "BB_rate_team",
+    ] + list(rename_map.values()) + ["is_home_team", "label"]
+
+    return df[feature_cols]
+
+
 def train_model() -> None:
     """Tune and train the XGBoost model."""
-    df = pd.read_csv(DATA_FILE).sort_values("season")
+    df = load_enhanced_dataset().sort_values("season")
     X = df.drop(columns=["label"])
     y = df["label"]
 
@@ -162,7 +241,16 @@ def get_today_games() -> pd.DataFrame:
 def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     """Merge cached statistics to build the model feature set."""
     pitcher_season = pd.read_csv(PITCHER_SEASON_FILE)
-    team_offense = pd.read_csv(TEAM_OFFENSE_FILE, parse_dates=["game_date"]).sort_values("game_date")
+    team_offense = pd.read_csv(TEAM_OFFENSE_FILE, parse_dates=["game_date"]).sort_values([
+        "team",
+        "half_inning",
+        "game_date",
+    ])
+    off_cols = ["runs_1st", "OBP", "SLG", "K_rate", "BB_rate"]
+    for c in off_cols:
+        team_offense[f"{c}_roll5"] = team_offense.groupby(["team", "half_inning"])[c].transform(
+            lambda s: s.rolling(5, min_periods=1).mean().shift()
+        )
     latest_off = team_offense.groupby(["team", "half_inning"]).tail(1)
     team_offense_clean = latest_off.rename(
         columns={
@@ -171,11 +259,26 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
             "K_rate": "K_rate_team",
             "BB_rate": "BB_rate_team",
             "runs_rolling10": "runs_rolling10_team",
+            "runs_1st_roll5": "runs_team_roll5",
+            "OBP_roll5": "OBP_team_roll5",
+            "SLG_roll5": "SLG_team_roll5",
+            "K_rate_roll5": "K_rate_team_roll5",
+            "BB_rate_roll5": "BB_rate_team_roll5",
         }
     )
 
-    df["pitcher_key"] = df["pitcher_name"].str.strip().str.lower()
-    df["pitcher"] = df["pitcher_key"].map(manual_ids)
+    pitcher_roll = pd.read_csv(PITCHER_ROLLING_FILE, parse_dates=["game_date_start"]).sort_values([
+        "pitcher",
+        "game_date_start",
+    ])
+    stats_cols = ["hits_allowed", "walks", "strikeouts", "batters_faced", "runs_allowed"]
+    for c in stats_cols:
+        pitcher_roll[f"{c}_roll3"] = pitcher_roll.groupby("pitcher")[c].transform(
+            lambda s: s.rolling(3, min_periods=1).mean().shift()
+        )
+    pitcher_roll_latest = pitcher_roll.groupby("pitcher").tail(1)[["pitcher"] + [f"{c}_roll3" for c in stats_cols]]
+
+    df["pitcher"] = df["pitcher_name"].apply(lookup_pitcher_id)
     df = df.dropna(subset=["pitcher"]).copy()
     df["season"] = datetime.today().year
     df["is_home_team"] = df["inning_topbot"] == "Bot"
@@ -197,6 +300,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(season_stats, left_on=["pitcher", "season"], right_on=["IDfg", "Season"], how="left")
     df["team_abbr"] = df["team"].map(team_map)
     df = df.merge(team_offense_clean, left_on=["team_abbr", "half_inning"], right_on=["team", "half_inning"], how="left")
+    df = df.merge(pitcher_roll_latest, on="pitcher", how="left")
     df = df.rename(columns={"team_x": "team", "team_y": "team_stats"})
     return df
 

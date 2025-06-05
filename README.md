@@ -7,8 +7,10 @@ This repository trains a model to predict whether a run will be scored in the fi
 - Run `python data_prep.py` to fetch the latest seasons.
 
 ## Model training
-- `train_model.py` loads the cleaned dataset (`final_training_data_clean_final.csv`) and performs hyperparameter tuning using `GridSearchCV` with **time-series cross-validation**.
-- The best XGBoost model is then evaluated on an 80/20 chronological split and saved as `xgboost_yrfi_tuned.json`.
+`train_model.py` builds an enhanced training set from `final_training_data.csv` by
+merging rolling pitcher and team offense statistics. It then performs hyperparameter
+tuning using `GridSearchCV` with **time-series cross-validation**. The best model is
+evaluated on an 80/20 chronological split and saved as `xgboost_yrfi_tuned.json`.
 
 ## Requirements
 Install dependencies with:
@@ -32,6 +34,8 @@ You can run individual scripts or use the unified pipeline:
    ```bash
    python predict_today.py
    ```
+   The script automatically resolves pitcher IDs using MLB-StatsAPI and merges
+   the latest rolling stats for both pitchers and team first-inning offense.
 
 ### Unified pipeline
 `nrfi_full_pipeline.py` exposes sub-commands to perform all steps:
