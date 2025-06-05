@@ -25,3 +25,7 @@ pip install -r requirements.txt
    ```bash
    python train_model.py
    ```
+3. Generate predictions for today's games:
+   ```bash
+   python predict_today.py
+   ```
