@@ -8,6 +8,21 @@ from functools import lru_cache
 import argparse
 import pickle
 
+
+def verify_unique_columns(df: pd.DataFrame, context: str = "") -> None:
+    """Raise ValueError if DataFrame columns are not unique."""
+    dupes = df.columns[df.columns.duplicated()].tolist()
+    if dupes:
+        msg = f"Duplicate columns {dupes} found"
+        if context:
+            msg += f" in {context}"
+        raise ValueError(msg)
+
+
+def save_csv_unique(df: pd.DataFrame, path: str) -> None:
+    verify_unique_columns(df, path)
+    df.to_csv(path, index=False)
+
 # Load tuned booster and calibrator
 model = xgb.Booster()
 model.load_model("xgboost_yrfi_leakfree_tuned.json")
@@ -254,7 +269,7 @@ if __name__ == '__main__':
 
         print(full_results)
         if args.output:
-            full_results.to_csv(args.output, index=False)
+            save_csv_unique(full_results, args.output)
         if args.txt_output:
             with open(args.txt_output, 'w') as f:
                 f.write(full_results.to_string(index=False))

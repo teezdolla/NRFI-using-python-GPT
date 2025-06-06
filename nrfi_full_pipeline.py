@@ -13,6 +13,22 @@ from pybaseball import statcast, playerid_lookup
 import statsapi
 from functools import lru_cache
 
+
+def verify_unique_columns(df: pd.DataFrame, context: str = "") -> None:
+    """Raise ValueError if DataFrame columns are not unique."""
+    dupes = df.columns[df.columns.duplicated()].tolist()
+    if dupes:
+        msg = f"Duplicate columns {dupes} found"
+        if context:
+            msg += f" in {context}"
+        raise ValueError(msg)
+
+
+def save_csv_unique(df: pd.DataFrame, path: str) -> None:
+    """Save DataFrame to CSV after verifying column uniqueness."""
+    verify_unique_columns(df, path)
+    df.to_csv(path, index=False)
+
 DATA_DIR = "data_cache"
 DATA_FILE = "final_training_data_leakfree.csv"
 MODEL_FILE = "xgboost_yrfi_leakfree_tuned.json"
@@ -120,7 +136,7 @@ def fetch_statcast_season(year: int) -> pd.DataFrame:
         return pd.read_csv(csv_path)
     print(f"Fetching statcast data for {year}...")
     df = statcast(start_dt=start, end_dt=end)
-    df.to_csv(csv_path, index=False)
+    save_csv_unique(df, csv_path)
     return df
 
 
@@ -383,7 +399,7 @@ def predict_today(output_csv: str | None = None, output_txt: str | None = None) 
     feats["Confidence"] = feats["P_YRFI"].apply(label_conf)
     results = feats[["team", "pitcher_name", "P_YRFI", "P_NRFI", "Confidence"]].sort_values("P_YRFI", ascending=False)
     if output_csv:
-        results.to_csv(output_csv, index=False)
+        save_csv_unique(results, output_csv)
     if output_txt:
         with open(output_txt, "w") as f:
             f.write(results.to_string(index=False))
