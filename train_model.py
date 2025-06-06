@@ -5,6 +5,21 @@ from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, log_loss
 from xgboost import XGBClassifier
 
+
+def verify_unique_columns(df: pd.DataFrame, context: str = "") -> None:
+    """Raise ValueError if DataFrame columns are not unique."""
+    dupes = df.columns[df.columns.duplicated()].tolist()
+    if dupes:
+        msg = f"Duplicate columns {dupes} found"
+        if context:
+            msg += f" in {context}"
+        raise ValueError(msg)
+
+
+def save_csv_unique(df: pd.DataFrame, path: str) -> None:
+    verify_unique_columns(df, path)
+    df.to_csv(path, index=False)
+
 DATA_FILE = "final_training_data_leakfree.csv"
 PITCHER_ROLLING_FILE = "pitcher_rolling_stats.csv"
 TEAM_OFFENSE_FILE = "team_1st_inning_offense.csv"
@@ -15,6 +30,7 @@ CALIBRATOR_FILE = "isotonic_calibrator.pkl"
 def load_enhanced_dataset() -> pd.DataFrame:
     """Load base data and merge rolling statistics."""
     df = pd.read_csv(DATA_FILE, parse_dates=["game_date"]).sort_values("game_date")
+    verify_unique_columns(df, "loaded base dataset")
 
     p_roll = pd.read_csv(PITCHER_ROLLING_FILE, parse_dates=["game_date_start"]).sort_values([
         "pitcher",
@@ -112,6 +128,7 @@ def load_enhanced_dataset() -> pd.DataFrame:
     ] + ["is_home_team", "label"]
 
     df = df[feature_cols]
+    verify_unique_columns(df, "enhanced dataset")
     return df
 
 def main():
