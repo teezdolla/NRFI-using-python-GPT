@@ -14,8 +14,9 @@ import statsapi
 from functools import lru_cache
 
 DATA_DIR = "data_cache"
-DATA_FILE = "final_training_data.csv"
-MODEL_FILE = "xgboost_yrfi_tuned.json"
+DATA_FILE = "final_training_data_leakfree.csv"
+MODEL_FILE = "xgboost_yrfi_leakfree_tuned.json"
+CALIBRATOR_FILE = "isotonic_calibrator.pkl"
 PITCHER_SEASON_FILE = "pitcher_stats_season.csv"
 TEAM_OFFENSE_FILE = "team_1st_inning_offense.csv"
 PITCHER_ROLLING_FILE = "pitcher_rolling_stats.csv"
@@ -74,6 +75,39 @@ team_map = {
     'Washington Nationals': 'WSH'
 }
 
+park_factors = {
+    'AZ': 0.98,
+    'ATL': 1.02,
+    'BAL': 0.98,
+    'BOS': 0.99,
+    'CHC': 1.02,
+    'CWS': 1.01,
+    'CIN': 1.08,
+    'CLE': 0.97,
+    'COL': 1.33,
+    'DET': 0.98,
+    'HOU': 0.97,
+    'KC': 1.01,
+    'LAA': 1.04,
+    'LAD': 1.00,
+    'MIA': 0.95,
+    'MIL': 1.02,
+    'MIN': 1.02,
+    'NYM': 1.02,
+    'NYY': 1.03,
+    'ATH': 0.96,
+    'PHI': 1.05,
+    'PIT': 0.99,
+    'SD': 0.98,
+    'SF': 0.97,
+    'SEA': 0.97,
+    'STL': 1.02,
+    'TB': 0.97,
+    'TEX': 1.03,
+    'TOR': 1.05,
+    'WSH': 1.02,
+}
+
 
 def fetch_statcast_season(year: int) -> pd.DataFrame:
     """Download statcast data for a given season with caching."""
@@ -118,13 +152,15 @@ def load_enhanced_dataset() -> pd.DataFrame:
         by="pitcher",
         direction="backward",
     )
+    df["days_rest"] = df.groupby("pitcher")["game_date"].diff().dt.days
+    df["days_rest"].fillna(df["days_rest"].median(), inplace=True)
 
     t_off = pd.read_csv(TEAM_OFFENSE_FILE, parse_dates=["game_date"]).sort_values([
         "team",
         "half_inning",
         "game_date",
     ])
-    off_cols = ["runs_1st", "OBP", "SLG", "K_rate", "BB_rate"]
+    off_cols = ["runs_rolling10", "OBP", "SLG", "K_rate", "BB_rate"]
     for c in off_cols:
         t_off[f"{c}_roll5"] = t_off.groupby(["team", "half_inning"])[c].transform(lambda s: s.rolling(5, min_periods=1).mean().shift())
     t_feats = t_off[["team", "half_inning", "game_date"] + [f"{c}_roll5" for c in off_cols]]
@@ -139,7 +175,8 @@ def load_enhanced_dataset() -> pd.DataFrame:
         direction="backward",
     )
 
-    df = df.fillna(0)
+    medians = df.median(numeric_only=True)
+    df = df.fillna(medians)
     rename_map = {f"{c}_roll5": f"{c}_team_roll5" for c in off_cols}
     df = df.rename(columns=rename_map)
 
@@ -147,6 +184,7 @@ def load_enhanced_dataset() -> pd.DataFrame:
         "inning",
         "pitcher",
         "season",
+        "days_rest",
         "hits_allowed",
         "walks",
         "strikeouts",
@@ -166,7 +204,7 @@ def load_enhanced_dataset() -> pd.DataFrame:
         "SLG_team",
         "K_rate_team",
         "BB_rate_team",
-    ] + list(rename_map.values()) + ["is_home_team", "label"]
+    ] + list(rename_map.values()) + ["park_factor", "is_home_team", "label"]
 
     return df[feature_cols]
 
@@ -179,16 +217,18 @@ def train_model() -> None:
 
     tscv = TimeSeriesSplit(n_splits=5)
     param_grid = {
-        "learning_rate": [0.01, 0.1],
+        "learning_rate": [0.01, 0.05, 0.1],
         "max_depth": [3, 5, 7],
         "subsample": [0.8, 1.0],
         "colsample_bytree": [0.8, 1.0],
+        "n_estimators": [400, 700, 1000],
+        "reg_alpha": [0, 0.1],
+        "reg_lambda": [1.0, 1.5],
     }
     model = XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",
         random_state=42,
-        n_estimators=500,
     )
     search = GridSearchCV(model, param_grid, cv=tscv, scoring="roc_auc", n_jobs=-1, verbose=1)
     search.fit(X, y)
@@ -198,8 +238,18 @@ def train_model() -> None:
     split = int(len(df) * 0.8)
     X_train, X_test = X.iloc[:split], X.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]
-    best_model.fit(X_train, y_train)
-    proba = best_model.predict_proba(X_test)[:, 1]
+    best_model.fit(
+        X_train,
+        y_train,
+        eval_set=[(X_test, y_test)],
+        early_stopping_rounds=50,
+        verbose=False,
+    )
+    proba_raw = best_model.predict_proba(X_test)[:, 1]
+    from sklearn.isotonic import IsotonicRegression
+    ir = IsotonicRegression(out_of_bounds='clip')
+    ir.fit(proba_raw, y_test)
+    proba = ir.predict(proba_raw)
     preds = (proba > 0.5).astype(int)
     print("Accuracy:", round(accuracy_score(y_test, preds), 4))
     print("AUC:", round(roc_auc_score(y_test, proba), 4))
@@ -207,7 +257,8 @@ def train_model() -> None:
     print("LogLoss:", round(log_loss(y_test, proba), 4))
 
     best_model.get_booster().save_model(MODEL_FILE)
-    print(f"Saved tuned model to {MODEL_FILE}")
+    pd.to_pickle(ir, CALIBRATOR_FILE)
+    print(f"Saved tuned model to {MODEL_FILE} and calibrator to {CALIBRATOR_FILE}")
 
 
 def get_today_games() -> pd.DataFrame:
@@ -246,7 +297,7 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
         "half_inning",
         "game_date",
     ])
-    off_cols = ["runs_1st", "OBP", "SLG", "K_rate", "BB_rate"]
+    off_cols = ["runs_rolling10", "OBP", "SLG", "K_rate", "BB_rate"]
     for c in off_cols:
         team_offense[f"{c}_roll5"] = team_offense.groupby(["team", "half_inning"])[c].transform(
             lambda s: s.rolling(5, min_periods=1).mean().shift()
@@ -259,7 +310,6 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
             "K_rate": "K_rate_team",
             "BB_rate": "BB_rate_team",
             "runs_rolling10": "runs_rolling10_team",
-            "runs_1st_roll5": "runs_team_roll5",
             "OBP_roll5": "OBP_team_roll5",
             "SLG_roll5": "SLG_team_roll5",
             "K_rate_roll5": "K_rate_team_roll5",
@@ -302,12 +352,14 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.merge(team_offense_clean, left_on=["team_abbr", "half_inning"], right_on=["team", "half_inning"], how="left")
     df = df.merge(pitcher_roll_latest, on="pitcher", how="left")
     df = df.rename(columns={"team_x": "team", "team_y": "team_stats"})
+    df["park_factor"] = df["team_abbr"].map(park_factors).fillna(1.0)
     return df
 
 
 def predict_today(output_csv: str | None = None, output_txt: str | None = None) -> pd.DataFrame:
     model = xgb.Booster()
     model.load_model(MODEL_FILE)
+    calibrator = pd.read_pickle(CALIBRATOR_FILE)
     expected_features = model.feature_names
 
     games = get_today_games()
@@ -317,7 +369,8 @@ def predict_today(output_csv: str | None = None, output_txt: str | None = None) 
     feats = prepare_features(games)
     X = pd.DataFrame({col: feats.get(col, 0) for col in expected_features})
     dmat = xgb.DMatrix(X[expected_features])
-    feats["P_YRFI"] = model.predict(dmat)
+    raw_proba = model.predict(dmat)
+    feats["P_YRFI"] = calibrator.predict(raw_proba)
     feats["P_NRFI"] = 1 - feats["P_YRFI"]
 
     def label_conf(p: float) -> str:
