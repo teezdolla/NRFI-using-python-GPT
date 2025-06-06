@@ -1,0 +1,14 @@
+            away_team            home_team   away_pitcher       home_pitcher   P_YRFI   P_NRFI       Confidence
+ Arizona Diamondbacks       Atlanta Braves Brandon Pfaadt       Grant Holmes 0.655342 0.344658 ⚠️ Moderate YRFI
+         Chicago Cubs Washington Nationals  Drew Pomeranz         Jake Irvin 0.589194 0.410806 ❓ Low Confidence
+       Detroit Tigers    Chicago White Sox     Casey Mize         Sean Burke 0.585666 0.414334 ❓ Low Confidence
+       Houston Astros   Pittsburgh Pirates Framber Valdez       Mitch Keller 0.576532 0.423468 ❓ Low Confidence
+      Minnesota Twins            Athletics    David Festa       Mitch Spence 0.562282 0.437718 ❓ Low Confidence
+    Baltimore Orioles     Seattle Mariners     Zach Eflin          Bryan Woo 0.539553 0.460447 ❓ Low Confidence
+        Texas Rangers       Tampa Bay Rays    Jack Leiter        Ryan Pepiot 0.537660 0.462340 ❓ Low Confidence
+     San Diego Padres San Francisco Giants    Dylan Cease         Robbie Ray 0.514864 0.485136 ❓ Low Confidence
+   Kansas City Royals  St. Louis Cardinals   Noah Cameron      Miles Mikolas 0.510971 0.489029 ❓ Low Confidence
+   Kansas City Royals  St. Louis Cardinals    Cole Ragans Matthew Liberatore 0.506199 0.493801 ❓ Low Confidence
+Philadelphia Phillies    Toronto Blue Jays  Jesús Luzardo      Chris Bassitt 0.489836 0.510164 ❓ Low Confidence
+  Cleveland Guardians     New York Yankees  Slade Cecconi          Max Fried 0.483275 0.516725 ❓ Low Confidence
+        New York Mets  Los Angeles Dodgers David Peterson       Landon Knack 0.475068 0.524932 ❓ Low Confidence
