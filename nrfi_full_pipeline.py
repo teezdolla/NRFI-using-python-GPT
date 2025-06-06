@@ -142,8 +142,8 @@ def load_enhanced_dataset() -> pd.DataFrame:
     for c in stats_cols:
         p_roll[f"{c}_roll3"] = p_roll.groupby("pitcher")[c].transform(lambda s: s.rolling(3, min_periods=1).mean().shift())
     p_feats = p_roll[["pitcher", "game_date_start"] + [f"{c}_roll3" for c in stats_cols]]
-    df = df.sort_values(["pitcher", "game_date"], kind="mergesort").reset_index(drop=True)
-    p_feats = p_feats.sort_values(["pitcher", "game_date_start"], kind="mergesort").reset_index(drop=True)
+    df = df.sort_values(["game_date", "pitcher"], kind="mergesort").reset_index(drop=True)
+    p_feats = p_feats.sort_values(["game_date_start", "pitcher"], kind="mergesort").reset_index(drop=True)
     df = pd.merge_asof(
         df,
         p_feats,
@@ -164,8 +164,8 @@ def load_enhanced_dataset() -> pd.DataFrame:
     for c in off_cols:
         t_off[f"{c}_roll5"] = t_off.groupby(["team", "half_inning"])[c].transform(lambda s: s.rolling(5, min_periods=1).mean().shift())
     t_feats = t_off[["team", "half_inning", "game_date"] + [f"{c}_roll5" for c in off_cols]]
-    df = df.sort_values(["team", "half_inning", "game_date"], kind="mergesort").reset_index(drop=True)
-    t_feats = t_feats.sort_values(["team", "half_inning", "game_date"], kind="mergesort").reset_index(drop=True)
+    df = df.sort_values(["game_date", "team", "half_inning"], kind="mergesort").reset_index(drop=True)
+    t_feats = t_feats.sort_values(["game_date", "team", "half_inning"], kind="mergesort").reset_index(drop=True)
     df = pd.merge_asof(
         df,
         t_feats,
@@ -179,17 +179,13 @@ def load_enhanced_dataset() -> pd.DataFrame:
     df = df.fillna(medians)
     rename_map = {f"{c}_roll5": f"{c}_team_roll5" for c in off_cols}
     df = df.rename(columns=rename_map)
+    df["park_factor"] = df["team"].map(park_factors).fillna(1.0)
 
     feature_cols = [
         "inning",
         "pitcher",
         "season",
         "days_rest",
-        "hits_allowed",
-        "walks",
-        "strikeouts",
-        "batters_faced",
-        "runs_allowed",
     ] + [f"{c}_roll3" for c in stats_cols] + [
         "ERA_season",
         "WHIP_season",
