@@ -37,11 +37,6 @@ def load_enhanced_dataset() -> pd.DataFrame:
         "pitcher",
         "season",
         "days_rest",
-        "hits_allowed",
-        "walks",
-        "strikeouts",
-        "batters_faced",
-        "runs_allowed",
     ] + [f"{c}_roll3" for c in stats_cols] + [
         "ERA_season",
         "WHIP_season",
