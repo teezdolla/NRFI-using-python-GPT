@@ -7,11 +7,13 @@ This repository trains a model to predict whether a run will be scored in the fi
 - Run `python data_prep.py` to fetch the latest seasons.
 
 ## Model training
-`train_model.py` builds an enhanced training set from `final_training_data.csv` by
-merging rolling pitcher and team offense statistics. It now adds the number of days
-since each pitcher's previous start as a feature. Hyperparameter tuning is performed
-using `GridSearchCV` with **time-series cross-validation**. The best model is
-evaluated on an 80/20 chronological split and saved as `xgboost_yrfi_tuned.json`.
+`train_model.py` now uses the leak-free dataset `final_training_data_leakfree.csv`
+to avoid using first-inning information from the same game. Rolling pitcher and
+team offense stats are merged, along with days of rest and ballpark factors. Missing
+values are imputed with column medians rather than zeros. Hyperparameter tuning is
+performed with `GridSearchCV` and the final model is trained with early stopping
+and probability calibration via isotonic regression. The tuned model is saved as
+`xgboost_yrfi_leakfree_tuned.json` and the calibrator as `isotonic_calibrator.pkl`.
 
 ## Requirements
 Install dependencies with:
@@ -31,7 +33,7 @@ You can run individual scripts or use the unified pipeline:
    ```bash
    python train_model.py
    ```
-3. Generate predictions for today's games:
+3. Generate predictions for today's games (model and calibrator are loaded automatically):
    ```bash
    python predict_today.py --output results.csv --txt-output results.txt
    ```

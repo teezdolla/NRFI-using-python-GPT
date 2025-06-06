@@ -5,10 +5,12 @@ import xgboost as xgb
 from datetime import datetime
 from functools import lru_cache
 import argparse
+import pickle
 
-# Load tuned booster
+# Load tuned booster and calibrator
 model = xgb.Booster()
-model.load_model('xgboost_yrfi_tuned.json')
+model.load_model('xgboost_yrfi_leakfree_tuned.json')
+calibrator = pickle.load(open('isotonic_calibrator.pkl', 'rb'))
 expected_features = model.feature_names
 
 @lru_cache(maxsize=None)
@@ -37,7 +39,7 @@ pitcher_roll = pd.read_csv('pitcher_rolling_stats.csv', parse_dates=['game_date_
 
 # Latest offense stats per team/half-inning
 team_offense = team_offense.sort_values(['team','half_inning','game_date'])
-off_cols = ['runs_1st','OBP','SLG','K_rate','BB_rate']
+off_cols = ['runs_rolling10','OBP','SLG','K_rate','BB_rate']
 for c in off_cols:
     team_offense[f'{c}_roll5'] = team_offense.groupby(['team','half_inning'])[c].transform(lambda s: s.rolling(5, min_periods=1).mean().shift())
 
@@ -46,7 +48,7 @@ team_offense_clean = latest_off.rename(columns={
     'OBP':'OBP_team', 'SLG':'SLG_team',
     'K_rate':'K_rate_team', 'BB_rate':'BB_rate_team',
     'runs_rolling10':'runs_rolling10_team',
-    'runs_1st_roll5':'runs_team_roll5', 'OBP_roll5':'OBP_team_roll5',
+    'OBP_roll5':'OBP_team_roll5',
     'SLG_roll5':'SLG_team_roll5', 'K_rate_roll5':'K_rate_team_roll5',
     'BB_rate_roll5':'BB_rate_team_roll5'
 })
@@ -93,6 +95,39 @@ team_map = {
     'Washington Nationals': 'WSH'
 }
 
+park_factors = {
+    'AZ': 0.98,
+    'ATL': 1.02,
+    'BAL': 0.98,
+    'BOS': 0.99,
+    'CHC': 1.02,
+    'CWS': 1.01,
+    'CIN': 1.08,
+    'CLE': 0.97,
+    'COL': 1.33,
+    'DET': 0.98,
+    'HOU': 0.97,
+    'KC': 1.01,
+    'LAA': 1.04,
+    'LAD': 1.00,
+    'MIA': 0.95,
+    'MIL': 1.02,
+    'MIN': 1.02,
+    'NYM': 1.02,
+    'NYY': 1.03,
+    'ATH': 0.96,
+    'PHI': 1.05,
+    'PIT': 0.99,
+    'SD': 0.98,
+    'SF': 0.97,
+    'SEA': 0.97,
+    'STL': 1.02,
+    'TB': 0.97,
+    'TEX': 1.03,
+    'TOR': 1.05,
+    'WSH': 1.02,
+}
+
 def get_today_games():
     today = datetime.today().strftime('%Y-%m-%d')
     schedule = statsapi.schedule(date=today)
@@ -137,6 +172,7 @@ def prepare_features(df):
     df = df.merge(team_offense_clean, left_on=['team_abbr','half_inning'], right_on=['team','half_inning'], how='left')
     df = df.merge(pitcher_roll_latest, on='pitcher', how='left')
     df = df.rename(columns={'team_x':'team','team_y':'team_stats'})
+    df['park_factor'] = df['team_abbr'].map(park_factors).fillna(1.0)
     return df
 
 def predict(df):
@@ -148,7 +184,8 @@ def predict(df):
             X[col] = 0
     X = X[expected_features]
     dmat = xgb.DMatrix(X)
-    df['P_YRFI'] = model.predict(dmat)
+    proba = model.predict(dmat)
+    df['P_YRFI'] = calibrator.predict(proba)
     df['P_NRFI'] = 1 - df['P_YRFI']
     def label_conf(p):
         if p >= 0.75:
