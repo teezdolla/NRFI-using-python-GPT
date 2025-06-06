@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import statsapi
 from pybaseball import playerid_lookup
@@ -9,8 +10,14 @@ import pickle
 
 # Load tuned booster and calibrator
 model = xgb.Booster()
-model.load_model('xgboost_yrfi_leakfree_tuned.json')
-calibrator = pickle.load(open('isotonic_calibrator.pkl', 'rb'))
+model.load_model("xgboost_yrfi_leakfree_tuned.json")
+CALIBRATOR_FILE = "isotonic_calibrator.pkl"
+if not os.path.exists(CALIBRATOR_FILE):
+    raise FileNotFoundError(
+        f"Calibrator file '{CALIBRATOR_FILE}' not found. Run train_model.py first."
+    )
+with open(CALIBRATOR_FILE, "rb") as f:
+    calibrator = pickle.load(f)
 expected_features = model.feature_names
 
 @lru_cache(maxsize=None)
