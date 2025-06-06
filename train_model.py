@@ -1,4 +1,5 @@
 import os
+import pickle
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, log_loss
@@ -157,8 +158,11 @@ def main():
     print("LogLoss:", round(log_loss(y_test, proba),4))
 
     best_model.get_booster().save_model(MODEL_FILE)
-    pd.to_pickle(ir, CALIBRATOR_FILE)
-    print(f"Saved tuned model to {MODEL_FILE} and calibrator to {CALIBRATOR_FILE}")
+    with open(CALIBRATOR_FILE, "wb") as f:
+        pickle.dump(ir, f)
+    print(
+        f"Saved tuned model to {MODEL_FILE} and calibrator to {CALIBRATOR_FILE}"
+    )
 
 if __name__ == '__main__':
     main()
